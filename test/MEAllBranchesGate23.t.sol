@@ -25,7 +25,7 @@ contract MEAllBranchesGate23Test is Test {
         assertEq(me.virtualReserveMON(), ME.BASE_MON());
         assertEq(me.actualMON(), 0);
         assertEq(me.surplusMON(), 0);
-        assertFalse(me.reserveSolvent() == false);
+        assertTrue(me.reserveSolvent());
         assertEq(me.curveReserveMON(), 0);
         assertEq(me.accountedMON(), 0);
         (uint256 actual, uint256 reserve, uint256 fees, uint256 surplus, uint256 k, uint256 left, bool solvent) = me.accountingStatus();
@@ -91,6 +91,9 @@ contract MEAllBranchesGate23Test is Test {
     }
 
     function test_FullBalanceDustExitAllowedAndFeeClaimBranches() public {
+        vm.expectRevert(ME.NoFeesToClaim.selector);
+        me.claimOwnerFees(payable(other));
+
         vm.prank(trader);
         me.buyME{value: 1 ether}(0, block.timestamp);
         uint256 bal = me.balanceOf(trader);
@@ -98,15 +101,14 @@ contract MEAllBranchesGate23Test is Test {
         me.sellME(bal, 0, block.timestamp);
         assertEq(me.balanceOf(trader), 0);
 
-        vm.expectRevert(ME.NoFeesToClaim.selector);
         me.claimOwnerFees(payable(other));
         vm.expectRevert(ME.ZeroAddress.selector);
         me.claimOwnerFees(payable(address(0)));
     }
 
     function test_OwnerAccessAndRescueGuardBranches() public {
-        vm.prank(other);
         vm.expectRevert();
+        vm.prank(other);
         me.claimOwnerFees(payable(other));
         vm.expectRevert(ME.ZeroAddress.selector);
         me.rescueSurplusMON(address(0));
