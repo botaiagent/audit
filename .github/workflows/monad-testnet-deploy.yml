@@ -1,0 +1,102 @@
+name: ME Monad Testnet Deploy and Smoke Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_testnet_deployment:
+        description: "Type DEPLOY_TO_MONAD_TESTNET to authorize a testnet deployment"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-and-verify:
+    if: ${{ inputs.confirm_testnet_deployment == 'DEPLOY_TO_MONAD_TESTNET' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RPC_URL: https://testnet-rpc.monad.xyz
+      EXPECTED_CHAIN_ID: "10143"
+      PRIVATE_KEY: ${{ secrets.MONAD_TESTNET_PRIVATE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Install dependencies
+        run: |
+          forge install foundry-rs/forge-std --no-commit
+          forge install OpenZeppelin/openzeppelin-contracts@v5.0.2 --no-commit
+
+      - name: Validate wallet secret and testnet chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${PRIVATE_KEY:-}" ]; then
+            echo "::error::Missing repository secret MONAD_TESTNET_PRIVATE_KEY. Add a dedicated testnet-only key in Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          actual_chain="$(cast chain-id --rpc-url "$RPC_URL")"
+          echo "RPC chain ID: $actual_chain"
+          if [ "$actual_chain" != "$EXPECTED_CHAIN_ID" ]; then
+            echo "::error::Wrong chain ID; refusing to deploy."
+            exit 1
+          fi
+          echo "Deployer address: $(cast wallet address --private-key "$PRIVATE_KEY")"
+          echo "Read-only balance check:"
+          cast balance "$(cast wallet address --private-key "$PRIVATE_KEY")" --rpc-url "$RPC_URL" --ether
+
+      - name: Build and run tests before deployment
+        run: |
+          forge build
+          forge test --profile ci -vvv
+          forge test --profile ci --match-path 'test/invariant/*' -vvv
+
+      - name: Deploy to Monad Testnet
+        shell: bash
+        run: |
+          set -euo pipefail
+          forge script script/Deploy.s.sol:DeployME --rpc-url "$RPC_URL" --broadcast 2>&1 | tee deploy.log
+          address="$(grep -Eo 'ME deployed at: 0x[a-fA-F0-9]{40}' deploy.log | tail -n 1 | awk '{print $4}')"
+          if [ -z "$address" ]; then
+            echo "::error::Could not parse deployed contract address from Foundry output. Inspect the run logs and transaction receipt before retrying."
+            exit 1
+          fi
+          owner="$(cast wallet address --private-key "$PRIVATE_KEY")"
+          echo "ME_ADDRESS=$address" >> "$GITHUB_ENV"
+          echo "EXPECTED_OWNER=$owner" >> "$GITHUB_ENV"
+          echo "DEPLOYED_ADDRESS=$address" >> "$GITHUB_OUTPUT"
+        id: deploy
+
+      - name: Verify deployed contract (read-only)
+        run: |
+          set -euo pipefail
+          forge script script/VerifyME.s.sol:VerifyME --rpc-url "$RPC_URL"
+
+      - name: Save deployment record
+        if: always()
+        run: |
+          mkdir -p reports
+          {
+            echo "# Monad Testnet deployment record"
+            echo
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "- Network chain ID expected: $EXPECTED_CHAIN_ID"
+            if [ -n "${ME_ADDRESS:-}" ]; then echo "- Contract address: $ME_ADDRESS"; else echo "- Contract address: not confirmed"; fi
+            echo "- This workflow targets testnet only; it does not deploy to mainnet."
+          } > reports/deployment-record.md
+      - name: Upload deployment record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: me-monad-testnet-deployment-record-${{ github.run_number }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 90
