@@ -1,0 +1,112 @@
+name: ME Monad Testnet Buy-Sell Round Trip
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_test_trade:
+        description: "Type RUN_TESTNET_BUY_SELL_0.02_MON to authorize real testnet transactions"
+        required: true
+        type: string
+      me_address:
+        description: "ME contract address already deployed on Monad Testnet"
+        required: true
+        default: "0x8f90F36D82DB9E73664e91a405486cc8749c1888"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  buy-sell-smoke-test:
+    if: ${{ inputs.confirm_test_trade == 'RUN_TESTNET_BUY_SELL_0.02_MON' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RPC_URL: https://testnet-rpc.monad.xyz
+      EXPECTED_CHAIN_ID: "10143"
+      PRIVATE_KEY: ${{ secrets.MONAD_TESTNET_PRIVATE_KEY }}
+      ME_ADDRESS: ${{ inputs.me_address }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Install dependencies
+        run: |
+          forge install foundry-rs/forge-std --no-commit
+          forge install OpenZeppelin/openzeppelin-contracts@v5.0.2 --no-commit
+
+      - name: Validate testnet, secret, contract, and wallet balance
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${PRIVATE_KEY:-}" ]; then
+            echo "::error::Missing repository secret MONAD_TESTNET_PRIVATE_KEY."
+            exit 1
+          fi
+          if [[ ! "$ME_ADDRESS" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
+            echo "::error::ME_ADDRESS is not a valid 0x-prefixed address."
+            exit 1
+          fi
+          actual_chain="$(cast chain-id --rpc-url "$RPC_URL")"
+          echo "RPC chain ID: $actual_chain"
+          if [ "$actual_chain" != "$EXPECTED_CHAIN_ID" ]; then
+            echo "::error::Wrong chain; refusing to send transactions."
+            exit 1
+          fi
+          code="$(cast code "$ME_ADDRESS" --rpc-url "$RPC_URL")"
+          if [ "$code" = "0x" ] || [ -z "$code" ]; then
+            echo "::error::No contract bytecode at ME_ADDRESS on Monad Testnet."
+            exit 1
+          fi
+          wallet="$(cast wallet address --private-key "$PRIVATE_KEY")"
+          balance="$(cast balance "$wallet" --rpc-url "$RPC_URL" --ether)"
+          echo "Trader wallet: $wallet"
+          echo "Wallet MON balance: $balance"
+          echo "Contract code exists on chain."
+          if ! awk -v b="$balance" 'BEGIN { exit !(b >= 0.05) }'; then
+            echo "::error::Wallet should have at least 0.05 MON for the 0.02 MON buy and gas. Fund this testnet wallet and retry."
+            exit 1
+          fi
+
+      - name: Build and run unit tests
+        run: |
+          forge build
+          forge test --profile ci -vv
+
+      - name: Execute 0.02 MON buy then sell all bought ME
+        shell: bash
+        run: |
+          set -euo pipefail
+          forge script script/TestnetTrade.s.sol:TestnetTrade --rpc-url "$RPC_URL" --broadcast -vvvv 2>&1 | tee round-trip.log
+
+      - name: Save round-trip report
+        if: always()
+        run: |
+          mkdir -p reports
+          {
+            echo "# Monad Testnet buy-sell round-trip"
+            echo
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "- Expected chain ID: $EXPECTED_CHAIN_ID"
+            echo "- Contract address: $ME_ADDRESS"
+            echo "- Trade size: 0.02 MON buy, then sell all ME bought by this run"
+            echo "- This workflow sends real transactions on Monad Testnet only; it does not target mainnet."
+            echo
+            echo "Review the job logs for transaction hashes and final reserveSolvent check."
+          } > reports/testnet-round-trip.md
+      - name: Upload round-trip report and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: me-testnet-round-trip-${{ github.run_number }}
+          path: |
+            reports/
+            round-trip.log
+          if-no-files-found: warn
+          retention-days: 90
