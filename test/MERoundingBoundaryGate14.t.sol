@@ -54,9 +54,12 @@ contract MERoundingBoundaryGate14Test is Test {
         uint256 kBefore = me.curveK();
         uint256 aliceBefore = me.balanceOf(alice);
 
+        uint256 belowMinimum = me.MIN_TRADE_MON() - 1;
+        uint256 deadline = block.timestamp + 1 days;
+
         vm.prank(alice);
         vm.expectRevert(ME.AmountTooSmall.selector);
-        me.buyME{value: me.MIN_TRADE_MON() - 1}(0, block.timestamp + 1 days);
+        me.buyME{value: belowMinimum}(0, deadline);
 
         assertEq(me.reserveMON(), reserveBefore);
         assertEq(me.accruedOwnerFees(), feesBefore);
