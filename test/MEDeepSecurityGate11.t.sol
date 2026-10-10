@@ -13,7 +13,7 @@ contract MEDeepSecurityGate11Test is Test {
 
     function setUp() public {
         me = new ME();
-        vm.deal(alice, 10 ether);
+        vm.deal(alice, 25 ether);
     }
 
     function test_SellPayoutCallbackCannotReenterBuy() public {
@@ -22,7 +22,6 @@ contract MEDeepSecurityGate11Test is Test {
         attacker.buy{value: 1 ether}();
         uint256 tokens = me.balanceOf(address(attacker));
         assertGt(tokens, 0);
-
         attacker.arm();
         attacker.sell(tokens);
 
@@ -39,10 +38,11 @@ contract MEDeepSecurityGate11Test is Test {
         assertGt(feeBefore, 0);
 
         ReenterOnReceive receiver = new ReenterOnReceive(me);
+        receiver.arm();
         me.claimOwnerFees(payable(address(receiver)));
 
         assertTrue(receiver.callbackTriggered(), "fee callback not triggered");
-        assertFalse(receiver.reentrySucceeded(), "reentrant owner claim unexpectedly succeeded");
+        assertFalse(receiver.reentrySucceeded(), "reentrant buy unexpectedly succeeded");
         assertEq(me.accruedOwnerFees(), 0, "fee liability should be cleared");
         assertEq(address(receiver).balance, feeBefore, "receiver should get exact fee once");
         assertTrue(me.reserveSolvent(), "liabilities insolvent after claim");
@@ -67,9 +67,7 @@ contract MEDeepSecurityGate11Test is Test {
         uint256 reserveBefore = me.reserveMON();
         uint256 feeBefore = me.accruedOwnerFees();
         assertGt(feeBefore, 0);
-
         me.claimOwnerFees(payable(feeSink));
-
         assertEq(me.reserveMON(), reserveBefore);
         assertEq(me.accruedOwnerFees(), 0);
         assertEq(feeSink.balance, feeBefore);
