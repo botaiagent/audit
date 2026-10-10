@@ -62,7 +62,7 @@ contract MEEconomicDifferentialGate22Test is Test {
         assertEq(me.accruedOwnerFees() - feesBefore, ownerFee);
         assertEq(me.reserveMON(), reserveBefore - grossOut + poolFee);
         assertTrue(me.reserveSolvent());
-        assertGe(me.curveK(), ME.INITIAL_K());
+        assertGe(me.curveK(), me.INITIAL_K());
     }
 
     function testFuzz_CalculateFeesAlwaysConservesGross(uint96 grossSeed) public view {
