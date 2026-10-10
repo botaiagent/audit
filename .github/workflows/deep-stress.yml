@@ -1,0 +1,38 @@
+name: ME Deep Stress and Attack Tests
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Install dependencies
+        run: |
+          forge install foundry-rs/forge-std --no-commit
+          forge install OpenZeppelin/openzeppelin-contracts@v5.0.2 --no-commit
+      - name: Verify source is present
+        run: test -f src/ME.sol
+      - name: Run million-iteration fuzz and adversarial invariant campaign
+        run: |
+          set -o pipefail
+          mkdir -p reports
+          forge test --profile stress -vvv 2>&1 | tee reports/forge-stress.log
+      - name: Upload stress report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: me-deep-stress-report-${{ github.run_number }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 30
