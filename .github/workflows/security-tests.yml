@@ -79,3 +79,27 @@ jobs:
           with urllib.request.urlopen(req, timeout=15) as response:
               print('Webhook HTTP status:', response.status)
           PY
+
+  rpc-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Verify Monad Testnet chain ID and latest block (read-only)
+        shell: bash
+        env:
+          RPC_URL: https://testnet-rpc.monad.xyz
+        run: |
+          set -euo pipefail
+          chain_id="$(cast chain-id --rpc-url "$RPC_URL")"
+          echo "RPC chain ID: $chain_id"
+          if [ "$chain_id" != "10143" ]; then
+            echo "::error::Expected Monad Testnet chain ID 10143; refusing to continue."
+            exit 1
+          fi
+          block_number="$(cast block-number --rpc-url "$RPC_URL")"
+          echo "Latest block number: $block_number"
+          echo "Read-only RPC preflight passed; no private key and no transaction used."
