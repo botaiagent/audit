@@ -1,0 +1,124 @@
+name: Verify Monad Testnet Runtime Bytecode
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/verify-monad-runtime-bytecode.yml"
+      - "src/ME.sol"
+      - "foundry.toml"
+  pull_request:
+    paths:
+      - ".github/workflows/verify-monad-runtime-bytecode.yml"
+      - "src/ME.sol"
+      - "foundry.toml"
+  workflow_dispatch:
+    inputs:
+      contract_address:
+        description: "Deployed ME contract address on Monad Testnet"
+        required: true
+        default: "0x8f90F36D82DB9E73664e91a405486cc8749c1888"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify-runtime-bytecode:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RPC_URL: https://testnet-rpc.monad.xyz
+      EXPECTED_CHAIN_ID: "10143"
+      ME_ADDRESS: ${{ inputs.contract_address || '0x8f90F36D82DB9E73664e91a405486cc8749c1888' }}
+    steps:
+      - name: Checkout exact source revision
+        uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Install pinned Solidity dependencies
+        run: |
+          forge install foundry-rs/forge-std --no-commit
+          forge install OpenZeppelin/openzeppelin-contracts@v5.0.2 --no-commit
+
+      - name: Validate target and build source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$ME_ADDRESS" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
+            echo "::error::contract_address must be a 20-byte hex address."
+            exit 1
+          fi
+
+          actual_chain="$(cast chain-id --rpc-url "$RPC_URL")"
+          echo "RPC chain ID: $actual_chain"
+          if [[ "$actual_chain" != "$EXPECTED_CHAIN_ID" ]]; then
+            echo "::error::Wrong chain ID; refusing to compare bytecode."
+            exit 1
+          fi
+
+          forge build --force
+          echo "Source revision: $GITHUB_SHA"
+          echo "Target address: $ME_ADDRESS"
+
+      - name: Compare deployed runtime bytecode with compiler output
+        id: compare
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+
+          actual="$(cast code "$ME_ADDRESS" --rpc-url "$RPC_URL" | tr '[:upper:]' '[:lower:]' | tr -d '\r\n')"
+          expected="$(forge inspect src/ME.sol:ME deployedBytecode | tr '[:upper:]' '[:lower:]' | tr -d '\r\n')"
+
+          if [[ -z "$actual" || "$actual" == "0x" ]]; then
+            echo "::error::No runtime bytecode found at target address."
+            exit 1
+          fi
+          if [[ -z "$expected" || "$expected" == "0x" ]]; then
+            echo "::error::Compiler output did not contain runtime bytecode."
+            exit 1
+          fi
+
+          actual_hash="$(printf '%s' "$actual" | sha256sum | awk '{print $1}')"
+          expected_hash="$(printf '%s' "$expected" | sha256sum | awk '{print $1}')"
+          actual_bytes="$(( (${#actual} - 2) / 2 ))"
+          expected_bytes="$(( (${#expected} - 2) / 2 ))"
+
+          {
+            echo "# Monad Testnet runtime bytecode verification"
+            echo
+            echo "- Source commit: $GITHUB_SHA"
+            echo "- Contract address: $ME_ADDRESS"
+            echo "- Chain ID: $EXPECTED_CHAIN_ID"
+            echo "- Compiler settings: from foundry.toml; Solidity version pinned to 0.8.24"
+            echo "- Runtime bytecode bytes (chain): $actual_bytes"
+            echo "- Runtime bytecode bytes (compiled): $expected_bytes"
+            echo "- SHA-256 of chain runtime hex: $actual_hash"
+            echo "- SHA-256 of compiled runtime hex: $expected_hash"
+          } > reports/runtime-bytecode-verification.md
+
+          if [[ "$actual" != "$expected" ]]; then
+            echo "- Result: FAIL — runtime bytecode differs." >> reports/runtime-bytecode-verification.md
+            cat reports/runtime-bytecode-verification.md
+            echo "::error::Deployed runtime bytecode does not exactly match src/ME.sol:ME compiled at this commit."
+            exit 1
+          fi
+
+          echo "- Result: PASS — runtime bytecode matches exactly." >> reports/runtime-bytecode-verification.md
+          cat reports/runtime-bytecode-verification.md
+          echo "result=PASS" >> "$GITHUB_OUTPUT"
+
+      - name: Upload verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monad-runtime-bytecode-verification-${{ github.run_number }}
+          path: reports/runtime-bytecode-verification.md
+          if-no-files-found: warn
+          retention-days: 90
