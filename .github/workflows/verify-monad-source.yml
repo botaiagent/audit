@@ -1,0 +1,96 @@
+name: Verify ME Source on Monad Testnet
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/verify-monad-source.yml"
+      - "src/ME.sol"
+      - "foundry.toml"
+  workflow_dispatch:
+    inputs:
+      contract_address:
+        description: "ME contract address on Monad Testnet"
+        required: true
+        default: "0x8f90F36D82DB9E73664e91a405486cc8749c1888"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RPC_URL: https://testnet-rpc.monad.xyz
+      EXPECTED_CHAIN_ID: "10143"
+      ME_ADDRESS: ${{ inputs.contract_address || '0x8f90F36D82DB9E73664e91a405486cc8749c1888' }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Install dependencies
+        run: |
+          forge install foundry-rs/forge-std --no-commit
+          forge install OpenZeppelin/openzeppelin-contracts@v5.0.2 --no-commit
+
+      - name: Check chain and build
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$ME_ADDRESS" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
+            echo "::error::Invalid contract address."
+            exit 1
+          fi
+          chain="$(cast chain-id --rpc-url "$RPC_URL")"
+          echo "Connected chain ID: $chain"
+          [[ "$chain" == "$EXPECTED_CHAIN_ID" ]] || { echo "::error::Wrong chain"; exit 1; }
+          forge build --force src/ME.sol
+          code="$(cast code "$ME_ADDRESS" --rpc-url "$RPC_URL")"
+          [[ -n "$code" && "$code" != "0x" ]] || { echo "::error::No code at address"; exit 1; }
+
+      - name: Submit source verification to Sourcify-compatible Monad verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          set +e
+          forge verify-contract "$ME_ADDRESS" src/ME.sol:ME \
+            --chain "$EXPECTED_CHAIN_ID" \
+            --verifier sourcify \
+            --verifier-url https://sourcify-api-monad.blockvision.org/ \
+            --watch 2>&1 | tee reports/source-verification.log
+          status=${PIPESTATUS[0]}
+          set -e
+          {
+            echo "# Monad Testnet source verification"
+            echo
+            echo "- Source commit: $GITHUB_SHA"
+            echo "- Contract address: $ME_ADDRESS"
+            echo "- Chain ID: $EXPECTED_CHAIN_ID"
+            echo "- Method: Foundry verify-contract via Monad Sourcify-compatible verifier"
+            echo "- Command exit status: $status"
+            echo
+            echo "## Verifier output"
+            echo '~~~text'
+            tail -n 160 reports/source-verification.log
+            echo '~~~'
+          } > reports/source-verification.md
+          cat reports/source-verification.md
+          exit "$status"
+
+      - name: Upload source verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monad-source-verification-${{ github.run_number }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 90
