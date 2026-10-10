@@ -108,7 +108,7 @@ contract MEHardeningGate7Test is Test {
 
         vm.prank(alice);
         (bool ok,) = address(me).call(
-            abi.encodeCall(ME.transfer, (address(me), tokens / 2))
+            abi.encodeWithSignature("transfer(address,uint256)", address(me), tokens / 2)
         );
         assertFalse(ok, "direct transfer into curve must revert");
         assertEq(me.balanceOf(alice), tokens);
