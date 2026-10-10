@@ -30,15 +30,17 @@ contract MEBranchCoverageGate21Test is Test {
     function test_QuoteBuyRejectsZeroAndBelowMinimum() public {
         vm.expectRevert(ME.ZeroAmount.selector);
         me.quoteBuy(0);
+        uint256 belowMinimum = me.MIN_TRADE_MON() - 1;
         vm.expectRevert(ME.AmountTooSmall.selector);
-        me.quoteBuy(me.MIN_TRADE_MON() - 1);
+        me.quoteBuy(belowMinimum);
     }
 
     function test_QuoteSellRejectsZeroAndInsufficientBalance() public {
         vm.expectRevert(ME.ZeroAmount.selector);
         me.quoteSellFor(trader, 0);
+        uint256 aboveBalance = me.balanceOf(trader) + 1;
         vm.expectRevert(ME.InsufficientME.selector);
-        me.quoteSellFor(trader, me.balanceOf(trader) + 1);
+        me.quoteSellFor(trader, aboveBalance);
     }
 
     function test_SurplusZeroWhenBalanceDoesNotExceedLiabilities() public {
