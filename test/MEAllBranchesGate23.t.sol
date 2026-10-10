@@ -24,9 +24,9 @@ contract MEAllBranchesGate23Test is Test {
 
     function test_InitialViewsAndAccountingSnapshot() public view {
         assertEq(me.decimals(), 18);
-        assertEq(me.remainingME(), ME.TOTAL_SUPPLY());
+        assertEq(me.remainingME(), me.TOTAL_SUPPLY());
         assertEq(me.circulatingME(), 0);
-        assertEq(me.virtualReserveMON(), ME.BASE_MON());
+        assertEq(me.virtualReserveMON(), me.BASE_MON());
         assertEq(me.actualMON(), 0);
         assertEq(me.surplusMON(), 0);
         assertTrue(me.reserveSolvent());
@@ -37,8 +37,8 @@ contract MEAllBranchesGate23Test is Test {
         assertEq(reserve, 0);
         assertEq(fees, 0);
         assertEq(surplus, 0);
-        assertEq(k, ME.INITIAL_K());
-        assertEq(left, ME.TOTAL_SUPPLY());
+        assertEq(k, me.INITIAL_K());
+        assertEq(left, me.TOTAL_SUPPLY());
         assertTrue(solvent);
     }
 
@@ -55,7 +55,7 @@ contract MEAllBranchesGate23Test is Test {
         vm.expectRevert(ME.ZeroAmount.selector);
         me.quoteBuy(0);
         vm.expectRevert(ME.AmountTooSmall.selector);
-        me.quoteBuy(ME.MIN_TRADE_MON() - 1);
+        me.quoteBuy(me.MIN_TRADE_MON() - 1);
         vm.expectRevert(ME.DeadlineExpired.selector);
         vm.prank(trader);
         me.buyME{value: 1 ether}(0, block.timestamp - 1);
