@@ -49,8 +49,9 @@ contract MELiquidityReserveGate10Test is Test {
         uint256 feeLiability = me.accruedOwnerFees();
         assertGt(feeLiability, 0);
 
+        uint256 aliceAmount = me.balanceOf(alice);
         vm.prank(alice);
-        me.sellME(me.balanceOf(alice), 0, block.timestamp + 1 days);
+        me.sellME(aliceAmount, 0, block.timestamp + 1 days);
         _assertLedger();
 
         uint256 reserveBeforeClaim = me.reserveMON();
@@ -62,7 +63,6 @@ contract MELiquidityReserveGate10Test is Test {
         assertEq(ownerRecipient.balance - recipientBefore, feesBeforeClaim, "owner did not receive exact fees");
         assertEq(me.accruedOwnerFees(), 0, "fee liability not cleared");
         assertEq(me.reserveMON(), reserveBeforeClaim, "fee claim touched curve reserve");
-        assertTrue(me.reserveMON() >= 0, "unreachable reserve check");
         assertTrue(reserveBefore > 0, "test setup should create curve liquidity");
         _assertLedger();
     }
@@ -90,7 +90,6 @@ contract MELiquidityReserveGate10Test is Test {
         uint256 feesBefore = me.accruedOwnerFees();
         uint256 contractBalanceBefore = address(me).balance;
 
-        // Simulate forced native coin (e.g. selfdestruct); bypasses receive().
         vm.deal(address(me), contractBalanceBefore + 0.75 ether);
         assertEq(me.surplusMON(), 0.75 ether);
 
