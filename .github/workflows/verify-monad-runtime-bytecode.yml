@@ -1,6 +1,11 @@
 name: Verify Monad Testnet Runtime Bytecode
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/verify-monad-runtime-bytecode.yml"
+      - "src/ME.sol"
+      - "foundry.toml"
   workflow_dispatch:
     inputs:
       contract_address:
@@ -19,7 +24,7 @@ jobs:
     env:
       RPC_URL: https://testnet-rpc.monad.xyz
       EXPECTED_CHAIN_ID: "10143"
-      ME_ADDRESS: ${{ inputs.contract_address }}
+      ME_ADDRESS: ${{ inputs.contract_address || '0x8f90F36D82DB9E73664e91a405486cc8749c1888' }}
     steps:
       - name: Checkout exact source revision
         uses: actions/checkout@v4
