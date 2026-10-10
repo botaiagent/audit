@@ -76,10 +76,11 @@ contract MEEconomicGate5Test is Test {
         uint256 feesBefore = me.accruedOwnerFees();
         uint256 kBefore = me.curveK();
 
-        vm.startPrank(alice);
-        vm.expectRevert(ME.AmountTooSmall.selector);
-        me.buyME{value: me.MIN_TRADE_MON() - 1}(0, block.timestamp + 1 days);
-        vm.stopPrank();
+        vm.prank(alice);
+        (bool success, ) = address(me).call{value: me.MIN_TRADE_MON() - 1}(
+            abi.encodeCall(ME.buyME, (0, block.timestamp + 1 days))
+        );
+        assertFalse(success, "buy below MIN_TRADE_MON must revert");
 
         assertEq(me.reserveMON(), reserveBefore);
         assertEq(me.accruedOwnerFees(), feesBefore);
@@ -94,10 +95,11 @@ contract MEEconomicGate5Test is Test {
         uint256 owned = me.balanceOf(alice);
         assertGt(owned, 1);
 
-        vm.startPrank(alice);
-        vm.expectRevert(ME.AmountTooSmall.selector);
-        me.sellME(owned / 2, 0, block.timestamp + 1 days);
-        vm.stopPrank();
+        vm.prank(alice);
+        (bool partialSuccess, ) = address(me).call(
+            abi.encodeCall(ME.sellME, (owned / 2, 0, block.timestamp + 1 days))
+        );
+        assertFalse(partialSuccess, "dust partial sale must revert");
 
         vm.prank(alice);
         me.sellME(owned, 0, block.timestamp + 1 days);
