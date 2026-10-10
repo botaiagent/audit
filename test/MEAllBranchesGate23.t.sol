@@ -69,6 +69,7 @@ contract MEAllBranchesGate23Test is Test {
         me.buyME{value: 1 ether}(0, block.timestamp);
         uint256 bal = me.balanceOf(trader);
         vm.expectRevert(ME.AmountTooSmall.selector);
+        vm.prank(trader);
         me.sellME(1, 0, block.timestamp);
         vm.expectRevert(ME.InsufficientME.selector);
         vm.prank(other);
