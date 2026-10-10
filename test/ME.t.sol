@@ -179,6 +179,72 @@ contract MECoreTest is Test {
         assertEq(me.pendingOwner(), address(0));
     }
 
+    function test_QuoteBuyMatchesExecutedBuy() public {
+        uint256 monIn = 2 ether;
+        uint256 expectedME = me.quoteBuy(monIn);
+
+        vm.prank(alice);
+        me.buyME{value: monIn}(expectedME, block.timestamp + 1 days);
+
+        assertEq(me.balanceOf(alice), expectedME);
+        assertTrue(me.reserveSolvent());
+    }
+
+    function test_QuoteSellMatchesExecutedSell() public {
+        vm.prank(alice);
+        me.buyME{value: 2 ether}(0, block.timestamp + 1 days);
+
+        uint256 meIn = me.balanceOf(alice);
+        uint256 expectedMON = me.quoteSellFor(alice, meIn);
+        uint256 beforeBalance = alice.balance;
+
+        vm.prank(alice);
+        me.sellME(meIn, expectedMON, block.timestamp + 1 days);
+
+        assertEq(alice.balance - beforeBalance, expectedMON);
+        assertEq(me.balanceOf(alice), 0);
+        assertTrue(me.reserveSolvent());
+    }
+
+    function test_FeeRoundingBoundaries() public view {
+        (uint256 pool1, uint256 owner1, uint256 total1) = me.calculateFees(1);
+        assertEq(total1, 1);
+        assertEq(owner1, 0);
+        assertEq(pool1, 1);
+
+        (uint256 pool50, uint256 owner50, uint256 total50) = me.calculateFees(50);
+        assertEq(total50, 1);
+        assertEq(owner50, 0);
+        assertEq(pool50, 1);
+
+        (uint256 pool500, uint256 owner500, uint256 total500) = me.calculateFees(500);
+        assertEq(total500, 5);
+        assertEq(owner500, 1);
+        assertEq(pool500, 4);
+
+        (uint256 pool10000, uint256 owner10000, uint256 total10000) =
+            me.calculateFees(10_000);
+        assertEq(total10000, 100);
+        assertEq(owner10000, 20);
+        assertEq(pool10000, 80);
+    }
+
+    function test_CurveKNeverDecreasesAcrossBuyAndSell() public {
+        uint256 initialK = me.curveK();
+
+        vm.prank(alice);
+        me.buyME{value: 10 ether}(0, block.timestamp + 1 days);
+        uint256 afterBuyK = me.curveK();
+        assertGe(afterBuyK, initialK);
+
+        uint256 owned = me.balanceOf(alice);
+        vm.prank(alice);
+        me.sellME(owned, 0, block.timestamp + 1 days);
+
+        assertGe(me.curveK(), afterBuyK);
+        assertTrue(me.reserveSolvent());
+    }
+
     function test_OwnerCannotRenounceOwnership() public {
         vm.prank(owner);
         vm.expectRevert(ME.RenounceDisabled.selector);
