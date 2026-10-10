@@ -35,6 +35,11 @@ jobs:
         run: |
           set -o pipefail
           forge test --profile ci --match-path 'test/invariant/*' -vvv 2>&1 | tee reports/forge-invariant.log
+      - name: Measure line and branch coverage
+        if: success()
+        run: |
+          set -o pipefail
+          forge coverage --profile ci --report summary 2>&1 | tee reports/forge-coverage.log
       - name: Build summary
         if: always()
         run: |
@@ -51,6 +56,9 @@ jobs:
             echo
             echo '## Invariant log'
             if [ -f reports/forge-invariant.log ]; then tail -n 80 reports/forge-invariant.log; else echo 'No invariant log.'; fi
+            echo
+            echo '## Coverage log'
+            if [ -f reports/forge-coverage.log ]; then cat reports/forge-coverage.log; else echo 'Coverage step did not produce a report.'; fi
           } > reports/summary.md
       - name: Upload report artifact
         if: always()
