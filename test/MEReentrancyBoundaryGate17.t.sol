@@ -47,6 +47,7 @@ contract Gate17ReentrantSeller {
 /// @notice Gate 17: reentrancy resistance at native-MON payout boundaries.
 /// @dev Local Foundry tests and CI only; no live-chain writes.
 contract MEReentrancyBoundaryGate17Test is Test {
+    address internal recipient = address(0xCAFE);
     ME internal me;
     Gate17ReentrantSeller internal seller;
 
@@ -96,9 +97,9 @@ contract MEReentrancyBoundaryGate17Test is Test {
         assertEq(me.accruedOwnerFees(), feesBefore);
         assertTrue(me.reserveSolvent());
 
-        uint256 ownerBefore = address(this).balance;
-        me.rescueSurplusMON(address(this));
-        assertEq(address(this).balance - ownerBefore, 1 ether);
+        uint256 recipientBefore = recipient.balance;
+        me.rescueSurplusMON(recipient);
+        assertEq(recipient.balance - recipientBefore, 1 ether);
         assertEq(me.surplusMON(), 0);
         assertEq(me.reserveMON(), reserveBefore);
         assertEq(me.accruedOwnerFees(), feesBefore);
