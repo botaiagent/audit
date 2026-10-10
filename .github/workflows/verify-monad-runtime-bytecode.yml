@@ -62,7 +62,7 @@ jobs:
             exit 1
           fi
 
-          forge build --force
+          forge build --force src/ME.sol
           echo "Source revision: $GITHUB_SHA"
           echo "Target address: $ME_ADDRESS"
 
