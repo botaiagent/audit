@@ -42,6 +42,11 @@ contract MECoreTest is Test {
         uint256 owned = me.balanceOf(alice);
         uint256 sellAmount = bound(uint256(rawSellBps), 1, 10_000) * owned / 10_000;
         if (sellAmount == 0) sellAmount = 1;
+        // Partial sells below the contract's MON dust floor are expected to revert.
+        // Use a full exit in that case, which the contract explicitly permits.
+        if (sellAmount < owned && me.quoteSellFor(alice, sellAmount) < me.MIN_TRADE_MON()) {
+            sellAmount = owned;
+        }
         vm.prank(alice);
         me.sellME(sellAmount, 0, block.timestamp + 1 days);
         assertTrue(me.reserveSolvent());
