@@ -15,7 +15,7 @@ contract Gate17ReentrantSeller {
         me = token;
     }
 
-    function buy(uint256 value) external {
+    function buy(uint256 value) external payable {
         me.buyME{value: value}(0, block.timestamp + 1 days);
     }
 
