@@ -21,6 +21,46 @@ contract MEActor {
         uint256 amount = rawAmount % bal + 1;
         try me.sellME(amount, 0, block.timestamp + 1 days) returns (uint256) {} catch {}
     }
+
+    /// @notice Randomized adversarial calls; each selected exploit attempt must fail.
+    function attack(uint256 selector, uint256 rawAmount) external {
+        uint256 choice = selector % 6;
+        bool ok;
+        bytes memory data;
+
+        if (choice == 0) {
+            (ok,) = address(me).call{value: (rawAmount % 1 ether) + 1}("");
+            require(!ok, "direct MON accepted");
+        } else if (choice == 1) {
+            (ok, data) = address(me).call(
+                abi.encodeWithSignature("transfer(address,uint256)", address(me), 1)
+            );
+            require(!ok, "direct ME transfer accepted");
+        } else if (choice == 2) {
+            (ok,) = address(me).call(
+                abi.encodeWithSignature("claimOwnerFees(address)", payable(address(this)))
+            );
+            require(!ok, "unauthorized fee claim accepted");
+        } else if (choice == 3) {
+            (ok,) = address(me).call(
+                abi.encodeWithSignature("rescueSurplusMON(address)", address(this))
+            );
+            require(!ok, "unauthorized surplus rescue accepted");
+        } else if (choice == 4) {
+            (ok,) = address(me).call{value: 0.01 ether}(
+                abi.encodeWithSignature("buyME(uint256,uint256)", type(uint256).max, 0)
+            );
+            require(!ok, "slippage/deadline attack accepted");
+        } else {
+            uint256 bal = me.balanceOf(address(this));
+            if (bal > 0) {
+                (ok,) = address(me).call(
+                    abi.encodeWithSignature("sellME(uint256,uint256,uint256)", bal, 0, 0)
+                );
+                require(!ok, "expired sell accepted");
+            }
+        }
+    }
 }
 
 contract MEInvariantTest is StdInvariant, Test {
