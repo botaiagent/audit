@@ -88,4 +88,100 @@ contract MECoreTest is Test {
     function test_QuoteBuyIsPositiveForOrdinaryTrade() public view {
         assertGt(me.quoteBuy(1 ether), 0);
     }
+
+    function test_SellRevertsOnExpiredDeadline() public {
+        vm.prank(alice);
+        me.buyME{value: 1 ether}(0, block.timestamp + 1 days);
+        uint256 owned = me.balanceOf(alice);
+
+        vm.warp(10 days);
+        vm.prank(alice);
+        vm.expectRevert(ME.DeadlineExpired.selector);
+        me.sellME(owned, 0, block.timestamp - 1);
+    }
+
+    function test_SellRevertsWhenSlippageMinimumTooHigh() public {
+        vm.prank(alice);
+        me.buyME{value: 1 ether}(0, block.timestamp + 1 days);
+        uint256 owned = me.balanceOf(alice);
+        uint256 quotedOut = me.quoteSellFor(alice, owned);
+
+        vm.prank(alice);
+        vm.expectRevert(ME.SlippageExceeded.selector);
+        me.sellME(owned, quotedOut + 1, block.timestamp + 1 days);
+    }
+
+    function test_CalculateFeesOneMONIsOnePercentSplit() public view {
+        (uint256 poolFee, uint256 ownerFee, uint256 totalFee) =
+            me.calculateFees(1 ether);
+
+        assertEq(poolFee, 0.008 ether);
+        assertEq(ownerFee, 0.002 ether);
+        assertEq(totalFee, 0.01 ether);
+    }
+
+    function test_OwnerCanClaimAccruedFees() public {
+        vm.prank(alice);
+        me.buyME{value: 1 ether}(0, block.timestamp + 1 days);
+        uint256 fees = me.accruedOwnerFees();
+        assertEq(fees, 0.002 ether);
+
+        uint256 ownerBalanceBefore = owner.balance;
+        vm.prank(owner);
+        me.claimOwnerFees(payable(owner));
+
+        assertEq(me.accruedOwnerFees(), 0);
+        assertEq(owner.balance - ownerBalanceBefore, fees);
+        assertTrue(me.reserveSolvent());
+    }
+
+    function test_NonOwnerCannotClaimFees() public {
+        vm.prank(alice);
+        me.buyME{value: 1 ether}(0, block.timestamp + 1 days);
+
+        vm.prank(alice);
+        vm.expectRevert();
+        me.claimOwnerFees(payable(alice));
+    }
+
+    function test_OwnerCanRescueForcedMONSurplusOnly() public {
+        vm.deal(address(me), address(me).balance + 1 ether);
+        uint256 reserveBefore = me.reserveMON();
+        uint256 recipientBefore = alice.balance;
+
+        vm.prank(owner);
+        me.rescueSurplusMON(alice);
+
+        assertEq(alice.balance - recipientBefore, 1 ether);
+        assertEq(me.reserveMON(), reserveBefore);
+        assertEq(address(me).balance, me.reserveMON() + me.accruedOwnerFees());
+        assertTrue(me.reserveSolvent());
+    }
+
+    function test_NonOwnerCannotRescueSurplus() public {
+        vm.deal(address(me), 1 ether);
+        vm.prank(alice);
+        vm.expectRevert();
+        me.rescueSurplusMON(alice);
+    }
+
+    function test_OwnershipTransferRequiresAcceptance() public {
+        address nextOwner = address(0xCAFE);
+
+        vm.prank(owner);
+        me.transferOwnership(nextOwner);
+        assertEq(me.owner(), owner);
+        assertEq(me.pendingOwner(), nextOwner);
+
+        vm.prank(nextOwner);
+        me.acceptOwnership();
+        assertEq(me.owner(), nextOwner);
+        assertEq(me.pendingOwner(), address(0));
+    }
+
+    function test_OwnerCannotRenounceOwnership() public {
+        vm.prank(owner);
+        vm.expectRevert(ME.RenounceDisabled.selector);
+        me.renounceOwnership();
+    }
 }
