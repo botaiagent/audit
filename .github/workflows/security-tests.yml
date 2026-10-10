@@ -1,0 +1,81 @@
+name: ME Security Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  foundry:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Install dependencies
+        run: |
+          forge install foundry-rs/forge-std --no-commit
+          forge install OpenZeppelin/openzeppelin-contracts@v5.0.2 --no-commit
+      - name: Ensure contract is present
+        run: test -f src/ME.sol || { echo "::error::Add exact audited contract at src/ME.sol before tests can run."; exit 1; }
+      - name: Run unit and fuzz tests
+        run: |
+          set -o pipefail
+          mkdir -p reports
+          forge test --profile ci -vvv 2>&1 | tee reports/forge-test.log
+      - name: Run invariant tests
+        if: success()
+        run: |
+          set -o pipefail
+          forge test --profile ci --match-path 'test/invariant/*' -vvv 2>&1 | tee reports/forge-invariant.log
+      - name: Build summary
+        if: always()
+        run: |
+          mkdir -p reports
+          {
+            echo '# ME Security Test Report'
+            echo
+            echo "- Repository: $GITHUB_REPOSITORY"
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            echo '## Unit/fuzz log'
+            if [ -f reports/forge-test.log ]; then tail -n 80 reports/forge-test.log; else echo 'No unit/fuzz log.'; fi
+            echo
+            echo '## Invariant log'
+            if [ -f reports/forge-invariant.log ]; then tail -n 80 reports/forge-invariant.log; else echo 'No invariant log.'; fi
+          } > reports/summary.md
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: me-security-report-${{ github.run_number }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Send run metadata to Railway webhook (optional)
+        if: always() && env.RAILWAY_REPORT_WEBHOOK != ''
+        env:
+          RAILWAY_REPORT_WEBHOOK: ${{ secrets.RAILWAY_REPORT_WEBHOOK }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPOSITORY: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          url = os.environ['RAILWAY_REPORT_WEBHOOK']
+          if not url.startswith('https://'):
+              raise SystemExit('Webhook must use HTTPS')
+          payload = {'repository': os.environ['REPOSITORY'], 'commit': os.environ['COMMIT_SHA'], 'status': os.environ['JOB_STATUS'], 'run_url': os.environ['RUN_URL']}
+          req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'}, method='POST')
+          with urllib.request.urlopen(req, timeout=15) as response:
+              print('Webhook HTTP status:', response.status)
+          PY
