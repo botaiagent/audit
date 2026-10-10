@@ -5,6 +5,10 @@ import {Test} from "forge-std/Test.sol";
 import {ME} from "../src/ME.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
+contract Gate23ForeignToken is ERC20 {
+    constructor() ERC20("Foreign", "F") {}
+}
+
 /// @notice Gate 23: consolidated branch-targeted regression suite.
 /// @dev Local Foundry/CI only. No live-chain transactions.
 contract MEAllBranchesGate23Test is Test {
@@ -135,7 +139,7 @@ contract MEAllBranchesGate23Test is Test {
     }
 
     function test_RescueERC20EmptyAndRenounceDisabled() public {
-        ERC20 foreign = new ERC20("Foreign", "F") {};
+        ERC20 foreign = new Gate23ForeignToken();
         vm.expectRevert(ME.NothingToRescue.selector);
         me.rescueERC20(address(foreign), other);
         vm.expectRevert(ME.RenounceDisabled.selector);
