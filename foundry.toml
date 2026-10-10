@@ -12,3 +12,9 @@ invariant = { runs = 256, depth = 64, fail_on_revert = false }
 [profile.ci]
 fuzz = { runs = 2000 }
 invariant = { runs = 1000, depth = 100, fail_on_revert = false }
+
+# Long-running randomized trading + adversarial-call stress profile.
+# 10,000 runs x depth 100 = 1,000,000 handler calls per invariant campaign.
+[profile.stress]
+fuzz = { runs = 1000000 }
+invariant = { runs = 10000, depth = 100, fail_on_revert = false }
