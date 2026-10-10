@@ -1,0 +1,42 @@
+name: Monad Testnet Read-Only RPC Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rpc-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Check RPC secret is configured
+        env:
+          RPC_URL: ${{ secrets.MONAD_TESTNET_RPC_URL }}
+        run: |
+          if [ -z "$RPC_URL" ]; then
+            echo "::error::Missing repository secret MONAD_TESTNET_RPC_URL. Add it in Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - name: Verify Monad Testnet chain ID and read latest block
+        env:
+          RPC_URL: ${{ secrets.MONAD_TESTNET_RPC_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chain_id="$(cast chain-id --rpc-url "$RPC_URL")"
+          echo "RPC chain ID: $chain_id"
+          if [ "$chain_id" != "10143" ]; then
+            echo "::error::Expected Monad Testnet chain ID 10143; refusing to continue."
+            exit 1
+          fi
+          block_number="$(cast block-number --rpc-url "$RPC_URL")"
+          echo "Latest block number: $block_number"
+          echo "Read-only RPC preflight passed. No wallet key was used and no transaction was sent."
