@@ -42,3 +42,36 @@ forge script script/Deploy.s.sol:DeployME \
 Before broadcasting, independently verify the RPC endpoint's chain ID against the intended testnet. The script reverts unless `block.chainid == EXPECTED_CHAIN_ID`. The deployer becomes the initial owner; after deployment, verify the address and bytecode, run the smoke tests, then transfer ownership to the intended multisig using the two-step ownership flow. Do not transfer ownership until the pending owner address is verified.
 
 This repository change prepares the deployment procedure only. It does not mean a testnet deployment has occurred. A real deployment requires the operator to configure a trusted RPC endpoint and use their own wallet locally or via secured CI secrets.
+
+### Monad Testnet preflight and smoke check
+
+Monad Testnet currently uses chain ID `10143`, native currency `MON`, and 18 native-token decimals. Confirm the chain ID from your own configured RPC before any broadcast; do not rely on a hostname alone. See the Monad network reference: https://monad.xyz and testnet network details at https://monad.docsbot.app/ai/current-facts.
+
+Copy `.env.example` to a local `.env` and fill it only on your own machine. Keep `.env` out of Git. Do not put a private key in chat, source files, or committed workflow YAML.
+
+Read-only RPC preflight:
+```bash
+source .env
+cast chain-id --rpc-url "$RPC_URL"
+cast block-number --rpc-url "$RPC_URL"
+```
+Confirm the first command returns `10143` before proceeding. If it does not, stop.
+
+Compile and run the existing suite before any deployment:
+```bash
+forge build
+forge test -vvv
+```
+
+Only after the operator has confirmed the RPC, funded a dedicated testnet-only wallet with test MON, and reviewed the deployment bytecode should they choose to broadcast:
+```bash
+forge script script/Deploy.s.sol:DeployME --rpc-url "$RPC_URL" --broadcast
+```
+
+After deployment, set `ME_ADDRESS` to the transaction receipt's contract address and `EXPECTED_OWNER` to the expected owner address, then run the read-only smoke check:
+```bash
+forge script script/VerifyME.s.sol:VerifyME --rpc-url "$RPC_URL"
+```
+The verification script does not broadcast transactions. It checks chain ID, expected owner, fixed total supply, token metadata, and reserve solvency. Save the deployment transaction hash, address, compiler settings, and verified source/bytecode as the testnet record.
+
+No testnet deployment is implied by these instructions or repository files; deployment must be initiated and authorized by the operator.
