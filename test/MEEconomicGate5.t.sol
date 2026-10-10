@@ -76,9 +76,10 @@ contract MEEconomicGate5Test is Test {
         uint256 feesBefore = me.accruedOwnerFees();
         uint256 kBefore = me.curveK();
 
+        vm.startPrank(alice);
         vm.expectRevert(ME.AmountTooSmall.selector);
-        vm.prank(alice);
         me.buyME{value: me.MIN_TRADE_MON() - 1}(0, block.timestamp + 1 days);
+        vm.stopPrank();
 
         assertEq(me.reserveMON(), reserveBefore);
         assertEq(me.accruedOwnerFees(), feesBefore);
@@ -93,9 +94,10 @@ contract MEEconomicGate5Test is Test {
         uint256 owned = me.balanceOf(alice);
         assertGt(owned, 1);
 
+        vm.startPrank(alice);
         vm.expectRevert(ME.AmountTooSmall.selector);
-        vm.prank(alice);
         me.sellME(owned / 2, 0, block.timestamp + 1 days);
+        vm.stopPrank();
 
         vm.prank(alice);
         me.sellME(owned, 0, block.timestamp + 1 days);
