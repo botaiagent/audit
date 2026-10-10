@@ -44,8 +44,13 @@ contract MECoreTest is Test {
         if (sellAmount == 0) sellAmount = 1;
         // Partial sells below the contract's MON dust floor are expected to revert.
         // Use a full exit in that case, which the contract explicitly permits.
-        if (sellAmount < owned && me.quoteSellFor(alice, sellAmount) < me.MIN_TRADE_MON()) {
-            sellAmount = owned;
+        if (sellAmount < owned) {
+            // Dust-sized quote can revert; test the permitted full exit instead.
+            try me.quoteSellFor(alice, sellAmount) returns (uint256 quotedOut) {
+                if (quotedOut < me.MIN_TRADE_MON()) sellAmount = owned;
+            } catch {
+                sellAmount = owned;
+            }
         }
         vm.prank(alice);
         me.sellME(sellAmount, 0, block.timestamp + 1 days);
