@@ -1,6 +1,10 @@
 name: Monad Testnet Read-Only RPC Preflight
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/monad-testnet-preflight.yml"
   workflow_dispatch:
 
 permissions:
@@ -16,19 +20,10 @@ jobs:
         with:
           version: stable
 
-      - name: Check RPC secret is configured
-        env:
-          RPC_URL: ${{ secrets.MONAD_TESTNET_RPC_URL }}
-        run: |
-          if [ -z "$RPC_URL" ]; then
-            echo "::error::Missing repository secret MONAD_TESTNET_RPC_URL. Add it in Settings > Secrets and variables > Actions."
-            exit 1
-          fi
-
       - name: Verify Monad Testnet chain ID and read latest block
-        env:
-          RPC_URL: ${{ secrets.MONAD_TESTNET_RPC_URL }}
         shell: bash
+        env:
+          RPC_URL: https://testnet-rpc.monad.xyz
         run: |
           set -euo pipefail
           chain_id="$(cast chain-id --rpc-url "$RPC_URL")"
