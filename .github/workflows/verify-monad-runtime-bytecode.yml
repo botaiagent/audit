@@ -1,6 +1,13 @@
 name: Verify Monad Testnet Runtime Bytecode
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/verify-monad-runtime-bytecode.yml"
+      - "src/ME.sol"
+      - "foundry.toml"
   pull_request:
     paths:
       - ".github/workflows/verify-monad-runtime-bytecode.yml"
