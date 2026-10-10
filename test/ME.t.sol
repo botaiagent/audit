@@ -250,4 +250,77 @@ contract MECoreTest is Test {
         vm.expectRevert(ME.RenounceDisabled.selector);
         me.renounceOwnership();
     }
+
+    function test_ReentrantSellerCannotReenterSell() public {
+        ReentrantSeller attacker = new ReentrantSeller(me);
+
+        vm.prank(alice);
+        me.buyME{value: 2 ether}(0, block.timestamp + 1 days);
+        uint256 amount = me.balanceOf(alice);
+
+        vm.prank(alice);
+        me.transfer(address(attacker), amount);
+
+        attacker.sellAll(amount);
+
+        assertTrue(attacker.reentryAttempted());
+        assertFalse(attacker.reentrySucceeded());
+        assertEq(me.balanceOf(address(attacker)), 0);
+        assertTrue(me.reserveSolvent());
+    }
+
+    function test_RevertingMONReceiverRollsBackSellState() public {
+        RevertingMONReceiver receiver = new RevertingMONReceiver();
+
+        vm.prank(alice);
+        me.buyME{value: 2 ether}(0, block.timestamp + 1 days);
+        uint256 amount = me.balanceOf(alice);
+
+        vm.prank(alice);
+        me.transfer(address(receiver), amount);
+
+        uint256 reserveBefore = me.reserveMON();
+        uint256 ownerFeesBefore = me.accruedOwnerFees();
+        uint256 curveKBefore = me.curveK();
+
+        vm.expectRevert(ME.MONTransferFailed.selector);
+        receiver.sellAll(me, amount);
+
+        assertEq(me.balanceOf(address(receiver)), amount);
+        assertEq(me.reserveMON(), reserveBefore);
+        assertEq(me.accruedOwnerFees(), ownerFeesBefore);
+        assertEq(me.curveK(), curveKBefore);
+        assertTrue(me.reserveSolvent());
+    }
+}
+
+contract ReentrantSeller {
+    ME public immutable me;
+    bool public reentryAttempted;
+    bool public reentrySucceeded;
+
+    constructor(ME token) {
+        me = token;
+    }
+
+    function sellAll(uint256 amount) external {
+        me.sellME(amount, 0, block.timestamp + 1 days);
+    }
+
+    receive() external payable {
+        reentryAttempted = true;
+        (reentrySucceeded,) = address(me).call(
+            abi.encodeWithSelector(me.sellME.selector, 1, 0, block.timestamp + 1 days)
+        );
+    }
+}
+
+contract RevertingMONReceiver {
+    function sellAll(ME me, uint256 amount) external {
+        me.sellME(amount, 0, block.timestamp + 1 days);
+    }
+
+    receive() external payable {
+        revert("reject MON");
+    }
 }
